@@ -6,10 +6,13 @@ import shutil
 import time
 import cv2
 import numpy as np
+import pandas as pd
+from sklearn.metrics import f1_score, confusion_matrix, recall_score, precision_score
 
 from torchvision.utils import save_image
 
 import torch
+import torch.nn
 import torch.nn.functional as F
 import torch.distributed as dist
 import torch.optim
@@ -19,7 +22,7 @@ from easydict import EasyDict
 from models.model_helper import ModelHelper
 from tensorboardX import SummaryWriter
 from torch.nn.parallel import DistributedDataParallel as DDP
-from utils.criterion_helper import build_criterion
+from utils.criterion_helper import build_criterion, FeatureMSELoss
 from utils.dist_helper import setup_distributed
 from utils.eval_helper import dump, log_metrics, merge_together, performances
 from utils.lr_helper import get_scheduler
@@ -33,7 +36,7 @@ from utils.misc_helper import (
     update_config,
 )
 from utils.optimizer_helper import get_optimizer
-from utils.vis_helper import visualize_compound, visualize_single
+from utils.vis_helper import visualize_compound, visualize_single, normalize
 
 parser = argparse.ArgumentParser(description="CRAD Framework")
 parser.add_argument("--config", default="./config.yaml")
@@ -161,7 +164,7 @@ def main():
             criterion,
             frozen_layers,
         )
-        lr_scheduler.step(epoch)
+        lr_scheduler.step() 
 
         if (epoch + 1) % config.trainer.val_freq_epoch == 0:
             ret_metrics = validate(val_loader, model)
@@ -204,7 +207,6 @@ def train_one_epoch(
     batch_time = AverageMeter(config.trainer.print_freq_step)
     data_time = AverageMeter(config.trainer.print_freq_step)
     losses = AverageMeter(config.trainer.print_freq_step)
-
     model.train()
     # freeze selected layers
     for layer in frozen_layers:
@@ -280,7 +282,7 @@ def validate(val_loader, model):
     model.eval()
     rank = dist.get_rank()
     logger = logging.getLogger("global_logger")
-    criterion = build_criterion(config.criterion)
+    criterion = build_criterion(config.criterion) #loss_dict 
     end = time.time()
 
     if rank == 0:
@@ -289,21 +291,38 @@ def validate(val_loader, model):
     dist.barrier()
 
     with torch.no_grad():
+        label = torch.tensor([])
+        single_losses = []
+        files = []
         for i, input in enumerate(val_loader):
             if config.eval_mode:
                 input['eval_mode'] = True
             # forward
-            outputs = model(input)
+            #('feature_align','feature_rec') 둘 사이의 loss
+            label = torch.cat((label, input['label']), dim = 0)
+            outputs = model(input) #output['pred'].shape = (batchsize, 1, H, W) 여기서 말하는 pred는 reconstruction에 관한것.  
             dump(config.evaluator.eval_dir, outputs)
 
             # record loss
             loss = 0
-            for name, criterion_loss in criterion.items():
-                weight = criterion_loss.weight
-                loss += weight * criterion_loss(outputs)
+            
+            for name, criterion_loss in criterion.items(): #Feature MSE loss
+                weight = criterion_loss.weight    
+                loss += weight * criterion_loss(outputs) #배치 안 Loss의 합
+                for j in range(len(outputs['filename'])): #배치 수 만큼 반복
+                    file_name = outputs['filename'][j]
+                    files.append(file_name)
+
+                    align = outputs['feature_align'][j]
+                    rec = outputs['feature_rec'][j]
+                    mse_loss = torch.nn.MSELoss()
+                    single_loss = mse_loss(align, rec)
+                    single_losses.append(single_loss.cpu().tolist())
+
+
+
             num = len(outputs["filename"])
             losses.update(loss.item(), num)
-
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
@@ -315,13 +334,35 @@ def validate(val_loader, model):
                     )
                 )
     # gather final results
+
+
+    ####################
+    #loss를 임계로 사용하는 방식
+    dict = {
+       'filename' : np.asarray(files),
+        'loss' : np.asarray(single_losses),
+        'label' : np.asarray(label)
+    }
+
+
+    #single_losses = [1 if loss > 0.4 else 0 for loss in single_losses] 
+    
+
+
+    #single_losses = torch.tensor(single_losses)
+    #print("LOSS")
+    #print('confusion matrix')
+    #print(confusion_matrix(y_pred = single_losses, y_true = label))
+    ####################
+
+
     dist.barrier()
     total_num = torch.Tensor([losses.count]).cuda()
     loss_sum = torch.Tensor([losses.avg * losses.count]).cuda()
     dist.all_reduce(total_num, async_op=True)
     dist.all_reduce(loss_sum, async_op=True)
     final_loss = loss_sum.item() / total_num.item()
-    
+
     if outputs.get('time', None):
         for k, v in outputs['time'].items():
             avg_elapsed = np.array(v[1:]).mean()
@@ -332,19 +373,30 @@ def validate(val_loader, model):
         logger.info("Gathering final results ...")
         # total loss
         logger.info(" * Loss {:.5f}\ttotal_num={}".format(final_loss, total_num.item()))
-        fileinfos, preds, masks = merge_together(config.evaluator.eval_dir)
+        fileinfos, preds, masks = merge_together(config.evaluator.eval_dir) #preds.shape = (61, 224, 224)
+        df = pd.DataFrame(dict)
+    
         shutil.rmtree(config.evaluator.eval_dir)
         # evaluate, log & vis
         ret_metrics = performances(fileinfos, preds, masks, config)
         log_metrics(ret_metrics, config.evaluator.metrics)
         if args.evaluate and config.evaluator.get("vis_compound", None):
-            visualize_compound(
+            max_df = visualize_compound(
                 fileinfos,
                 preds,
                 masks,
                 config.evaluator.vis_compound,
                 config.dataset.image_reader,
-            )
+            )   
+
+            dataframe = pd.merge(df, max_df,on='filename',how='inner')
+            dataframe.to_csv('output.csv', index= False)
+    #prediction = dataframe['max']
+    #prediction = [1 if pred > 0.54 else 0 for pred in prediction]
+    #print("MAX")
+    #print(confusion_matrix(y_pred = prediction, y_true = label))
+
+            
     model.train()
     return ret_metrics
 

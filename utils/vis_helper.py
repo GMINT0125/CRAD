@@ -2,6 +2,7 @@ import os
 
 import cv2
 import numpy as np
+import pandas as pd
 from datasets.image_reader import build_image_reader
 
 from utils.eval_helper import sample_auroc
@@ -14,28 +15,31 @@ def normalize(pred, max_value=None, min_value=None):
         return (pred - min_value) / (max_value - min_value)
 
 
-def apply_ad_scoremap(image, scoremap, alpha=0.5):
+def apply_ad_scoremap(image, scoremap, alpha=0.5): # 0으로 설정시 scoremap만 보인다
     np_image = np.asarray(image, dtype=np.float64)
     scoremap = (scoremap * 255).astype(np.uint8)
-    scoremap = cv2.applyColorMap(scoremap, cv2.COLORMAP_JET)
+    scoremap = cv2.applyColorMap(scoremap, cv2.COLORMAP_JET)    
     scoremap = cv2.cvtColor(scoremap, cv2.COLOR_BGR2RGB)
     return (alpha * np_image + (1 - alpha) * scoremap).astype(np.uint8)
-
 
 def visualize_compound(fileinfos, preds, masks, cfg_vis, cfg_reader):
     vis_dir = cfg_vis.save_dir
     max_score = cfg_vis.get("max_score", None)
     min_score = cfg_vis.get("min_score", None)
-    max_score = preds.max() if not max_score else max_score
+    max_score = preds.max() if not max_score else max_score #전체 pred의 최대값 scalar
     min_score = preds.min() if not min_score else min_score
 
     image_reader = build_image_reader(cfg_reader)
+    
+    filenames = []
+    max_per_image = []
 
     for i, fileinfo in enumerate(fileinfos):
         auc = sample_auroc(preds[i], masks[i])
         
         clsname = fileinfo["clsname"]
         filename = fileinfo["filename"]
+        filenames.append(filename)
         filedir, filename = os.path.split(filename)
         _, defename = os.path.split(filedir)
         save_dir = os.path.join(vis_dir, clsname, defename)
@@ -50,8 +54,12 @@ def visualize_compound(fileinfos, preds, masks, cfg_vis, cfg_reader):
         # self normalize just for analysis
         scoremap_self = apply_ad_scoremap(image, normalize(pred)) # normalize with min/max of single sample
         # global normalize
-        pred = np.clip(pred, min_score, max_score)
+        pred = np.clip(pred, min_score, max_score) #pred 3차원
         pred = normalize(pred, max_score, min_score) # normalize with min/max of whole mini batch
+        prediction = pred[:,:,0]
+        max = np.max(prediction)
+        max_per_image.append(max)
+
         scoremap_global = apply_ad_scoremap(image, pred)
 
         if masks is not None:
@@ -59,16 +67,23 @@ def visualize_compound(fileinfos, preds, masks, cfg_vis, cfg_reader):
             mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
             save_path = os.path.join(save_dir, filename)
             if mask.sum() == 0:
-                scoremap = np.vstack([image, scoremap_global])
+                scoremap = np.vstack([image, scoremap_global]) 
             else:
-                scoremap = np.vstack([image, mask, scoremap_global, scoremap_self])
+                scoremap = np.vstack([image, mask, scoremap_global]) #scoremap_self
         else:
-            scoremap = np.vstack([image, scoremap_global, scoremap_self])
+            scoremap = np.vstack([image, scoremap_global, scoremap_self]) #global이 위에, self가 아래..
         scoremap = cv2.cvtColor(scoremap, cv2.COLOR_RGB2BGR)
         
         text = f"max: {auc['max'] if not np.isnan(auc['max']) else 0} / pixel: {auc['pixel']:.4f}"
         cv2.putText(scoremap, text, (10,40), cv2.FONT_ITALIC, 2, (0,0,255), 3)
         cv2.imwrite(save_path, scoremap)
+    
+    data = {
+        'filename' : filenames,
+        'max' : max_per_image
+    }
+    df = pd.DataFrame(data)
+    return df
 
 
 def visualize_single(fileinfos, preds, cfg_vis, cfg_reader):

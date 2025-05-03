@@ -126,7 +126,6 @@ class CRAD(nn.Module):
             torch.sum((feature_rec - feature_align)**2, dim=1, keepdim=True)
         )
         pred = self.upsample(pred)
-        
         return {
             'feature_rec': feature_rec,
             'feature_align': feature_align,

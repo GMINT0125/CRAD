@@ -70,8 +70,8 @@ class AverageMeter(object):
             self.sum += val * num
             self.count += num
             self.avg = self.sum / self.count
-
-
+    
+    
 def save_checkpoint(state, is_best, config):
     folder = config.save_path
 

@@ -36,7 +36,7 @@ pip install -r requirements.txt
 To train the model(s) in the paper, run this command:
 ```train
 cd experiments/
-bash train.sh config.yaml 4 0,1,2,3 1111
+bash train_torch.sh config.yaml 4 0,1,2,3 1111
 # bash train.sh <config> <num gpus> <gpu ids> <master port>
 ```
 

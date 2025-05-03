@@ -11,24 +11,24 @@ dataset:
   image_reader:
     type: opencv
     kwargs:
-      image_dir: ../data/MVTec-AD/mvtec_anomaly_detection/
+      image_dir: ../../../data/cropped_data/
       color_mode: RGB
 
   train:
-    meta_file: ../data/MVTec-AD/train.json
+    meta_file: ../../../data/crad/json/train_aug.json
     rebalance: False
     hflip: False
     vflip: False
     rotate: False
 
   test:
-    meta_file: ../data/MVTec-AD/test.json
+    meta_file: ../../../data/crad/json/test.json
 
-  input_size: [224,224] # [h,w]
-  pixel_mean: [0.485, 0.456, 0.406]
-  pixel_std: [0.229, 0.224, 0.225]
+  input_size: [224,224] # [h,w] 박스의 평균 :  width
+  pixel_mean: [0.485, 0.456, 0.406] # 데이터에 맞춰서 
+  pixel_std: [0.229, 0.224, 0.225] # 
   batch_size: 16
-  workers: 4 # number of workers of dataloader for each process
+  workers: 0 # number of workers of dataloader for each process
 
 criterion:
   - name: FeatureMSELoss
@@ -55,7 +55,7 @@ saver:
   exp_path: exp/MVTEC/CRAD/
   auto_resume: False
   always_save: False
-  load_path: checkpoints/ckpt_best.pth.tar
+  load_path: checkpoints/ckpt_best.pth.tar #ckpt_best
   save_dir: checkpoints/
   log_dir: log/
   feat_dir: best_feature/
