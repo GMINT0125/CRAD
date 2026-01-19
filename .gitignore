@@ -2,4 +2,6 @@
 *.csv
 
 # experiments/exp 폴더 및 그 하위 파일 전부 무시
-experiments/exp/
+experiments/
+
+data/

@@ -11,10 +11,10 @@ random.seed(42)
 
 class CONFIG():
     CROP_PATH = '../data/cropped_data/' 
-    DATA_PATH = '../data/raw_data/'
-    JSON_PATH = '../data/crad/json/'
-    TRAIN_JSON_PATH = '../data/crad/json/train.json'
-    TEST_JSON_PATH = '../data/crad/json/test.json'
+    DATA_PATH = '../data/images/'
+    JSON_PATH = '../data/json/'
+    TRAIN_JSON_PATH = '../data/json/train.json'
+    TEST_JSON_PATH = '../data/json/test.json'
 
 config = CONFIG()
 

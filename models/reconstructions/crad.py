@@ -106,7 +106,7 @@ class CRAD(nn.Module):
         if not self.training and input.get('save_recon', False):
             clsnames = input["clsname"]
             filenames = input["filename"]
-            for clsname, filename, feat_rec in zip(clsnames, filenames, feature_rec):
+            for clsname, filename, feat_rec, feat_align in zip(clsnames, filenames, feature_rec, feature_align):
                 filedir, filename = os.path.split(filename)
                 _, defename = os.path.split(filedir)
                 filename_, _ = os.path.splitext(filename)
@@ -114,6 +114,11 @@ class CRAD(nn.Module):
                 os.makedirs(save_dir, exist_ok=True)
                 feature_rec_np = feat_rec.detach().cpu().numpy()
                 np.save(os.path.join(save_dir, filename_ + ".npy"), feature_rec_np)
+                #Anomaly Region
+                save_dir = os.path.join(self.save_recon.save_dir, clsname, defename, "anomaly_region")
+                os.makedirs(save_dir, exist_ok=True)
+                feature_diff_np = (feat_rec - feat_align).detach().cpu().numpy()
+                np.save(os.path.join(save_dir, filename_ + "_diff.npy"), feature_diff_np)
         
         mse = torch.mean((feature_rec - feature_align)**2, dim=1)
         mse = 1 - torch.round((mse*self.mse_coef).clamp(0,1))

@@ -80,7 +80,7 @@ def visualize_compound(fileinfos, preds, masks, cfg_vis, cfg_reader):
     
     data = {
         'filename' : filenames,
-        'max' : max_per_image
+        'max' : max_per_image,
     }
     df = pd.DataFrame(data)
     return df

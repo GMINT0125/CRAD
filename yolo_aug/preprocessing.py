@@ -3,7 +3,7 @@
 import os
 
 class CONFIG():
-    DATA_PATH = '../data/raw_data'
+    DATA_PATH = '../data/images'
 
 config = CONFIG()
 

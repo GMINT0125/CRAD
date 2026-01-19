@@ -7,12 +7,10 @@ import cv2
 from ultralytics import YOLO
 import torch
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-device = 'cuda:2' if torch.cuda.is_available() else 'cpu'
-device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class CONFIG():
-    RAW_DATAPATH = '../data/raw_data/'
+    RAW_DATAPATH = '../data/images/'
     YOLO_PARAM = '../ultralytics/runs/detect/tune-n/weights/best.pt' # <- param 경로 수정
     CROP_DATAPATH = '../data/cropped_data/'
 

@@ -8,7 +8,6 @@ import cv2
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, confusion_matrix, recall_score, precision_score
-
 from torchvision.utils import save_image
 
 import torch
@@ -292,7 +291,6 @@ def validate(val_loader, model):
 
     with torch.no_grad():
         label = torch.tensor([])
-        single_losses = []
         files = []
         for i, input in enumerate(val_loader):
             if config.eval_mode:
@@ -300,7 +298,7 @@ def validate(val_loader, model):
             # forward
             #('feature_align','feature_rec') 둘 사이의 loss
             label = torch.cat((label, input['label']), dim = 0)
-            outputs = model(input) #output['pred'].shape = (batchsize, 1, H, W) 여기서 말하는 pred는 reconstruction에 관한것.  
+            outputs = model(input) 
             dump(config.evaluator.eval_dir, outputs)
 
             # record loss
@@ -308,19 +306,10 @@ def validate(val_loader, model):
             
             for name, criterion_loss in criterion.items(): #Feature MSE loss
                 weight = criterion_loss.weight    
-                loss += weight * criterion_loss(outputs) #배치 안 Loss의 합
-                for j in range(len(outputs['filename'])): #배치 수 만큼 반복
+                loss += weight * criterion_loss(outputs)
+                for j in range(len(outputs['filename'])):
                     file_name = outputs['filename'][j]
                     files.append(file_name)
-
-                    align = outputs['feature_align'][j]
-                    rec = outputs['feature_rec'][j]
-                    mse_loss = torch.nn.MSELoss()
-                    single_loss = mse_loss(align, rec)
-                    single_losses.append(single_loss.cpu().tolist())
-
-
-
             num = len(outputs["filename"])
             losses.update(loss.item(), num)
             # measure elapsed time
@@ -333,27 +322,28 @@ def validate(val_loader, model):
                         i + 1, len(val_loader), batch_time=batch_time
                     )
                 )
-    # gather final results
-
-
-    ####################
-    #loss를 임계로 사용하는 방식
-    dict = {
-       'filename' : np.asarray(files),
-        'loss' : np.asarray(single_losses),
-        'label' : np.asarray(label)
+    # gather from all ranks
+    local_data = {
+        'filename': files,
+        'label': label.cpu().tolist()
     }
+    all_data = [None for _ in range(dist.get_world_size())]
+    dist.all_gather_object(all_data, local_data)
 
+    if rank == 0:
+        # merge gathered data
+        all_files = []
+        all_labels = []
 
-    #single_losses = [1 if loss > 0.4 else 0 for loss in single_losses] 
-    
+        for d in all_data:
+            all_files.extend(d['filename'])
+            all_labels.extend(d['label'])
 
+        dict = {
+            'filename': np.asarray(all_files),
+            'label': np.asarray(all_labels)
+        }
 
-    #single_losses = torch.tensor(single_losses)
-    #print("LOSS")
-    #print('confusion matrix')
-    #print(confusion_matrix(y_pred = single_losses, y_true = label))
-    ####################
 
 
     dist.barrier()
@@ -391,10 +381,6 @@ def validate(val_loader, model):
 
             dataframe = pd.merge(df, max_df,on='filename',how='inner')
             dataframe.to_csv('output.csv', index= False)
-    #prediction = dataframe['max']
-    #prediction = [1 if pred > 0.54 else 0 for pred in prediction]
-    #print("MAX")
-    #print(confusion_matrix(y_pred = prediction, y_true = label))
 
             
     model.train()

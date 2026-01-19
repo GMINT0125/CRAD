@@ -35,7 +35,9 @@ class TrainBaseTransform(object):
         self.rotate = rotate
 
     def __call__(self, image, mask):
-        transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.BILINEAR)
+        #기존 --> transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.BILINEAR)
+        #transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.NEAREST_EXACT)
+        transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.BICUBIC)
         image = transform_fn(image)
         transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.NEAREST)
         mask = transform_fn(mask)
@@ -59,7 +61,9 @@ class TestBaseTransform(object):
         self.input_size = input_size  # h x w
 
     def __call__(self, image, mask):
-        transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.BILINEAR)
+        #기존 --> transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.BILINEAR)
+        #transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.NEAREST_EXACT)
+        transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.BICUBIC)
         image = transform_fn(image)
         transform_fn = transforms.Resize(self.input_size, transforms.InterpolationMode.NEAREST)
         mask = transform_fn(mask)
